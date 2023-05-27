@@ -1,6 +1,6 @@
 ---
 title: "Assignment 1"
-author: "Your Name"
+author: "Sophia Hull"
 format: html
 ---
 
@@ -15,17 +15,69 @@ format: html
 *Make sure to load the packages that you need and `glimpse()` the data or `View()` it to make sure that it downloaded properly.* 
 
 ```{r}
+#| label: V-dem Measures of Democracy
 
+# Load packages
+library(readr)
+library(dplyr)
+library(vdemdata)
+
+# Download the data
+
+Democracy <- vdem |>
+  filter(year >= 2003) |>
+  select(
+    country = country_name,
+    vdem_ctry_id = country_id,
+    year,
+    electoral_system = v2elparlel,
+    gender_quota = v2lgqugen,
+    region = e_regionpol_6C
+  ) |>
+  mutate(
+    region = case_match(region, 
+                        1 ~ "Eastern Europe",
+                        2 ~ "Latin America",
+                        3 ~ "Middle East",
+                        4 ~ "Africa",
+                        5 ~ "The West",
+                        6 ~ "Asia")
+  )
+
+# View the data
+glimpse(Democracy)
 ```
 
 ## Step 2: Download data from the World Bank
 
-*Next, download the variable on women's represenation that we used in Module 1.2 ("SG.GEN.PARL.ZS") and at least one additional measure related to women's empowerment. Go to the [WDI](https://databank.worldbank.org/source/world-development-indicators) site the wb_search() function to identify relevant variables. Download the most recent 20 years of data for your analysis.* 
+*Next, download the variable on women's representation that we used in Module 1.2 ("SG.GEN.PARL.ZS") and at least one additional measure related to women's empowerment. Go to the [WDI](https://databank.worldbank.org/source/world-development-indicators) site the wb_search() function to identify relevant variables. Download the most recent 20 years of data for your analysis.* 
 
 *Make sure that the indicator has enough data to conduct your analysis, i.e. that it has data for most countries and years.*
 
 ```{r}
+#| label: wb_stats
 
+# Load packages
+
+library(wbstats)
+library(dplyr)
+library(janitor)
+
+# Store the list of indicators in an object. I am using variables on women's representation including the Proportion of seats held by women in national parliaments (%) from module 1.2 and educational attainment, at least Bachelor's or equivalent, population 25+, female (%) (cumulative).
+
+indicators <- c("educational_attainment" = "SE.TER.CUAT.BA.FE.ZS", "women_rep" = "SG.GEN.PARL.ZS")
+
+# Download the data
+female_emp <- wb_data(indicators, mrv = 20) |>
+  select(!iso2c) |>
+  rename(year = date) |>
+  mutate(
+    educational_attainment = round_to_fraction(educational_attainment, denominator = 100),
+    women_rep = round_to_fraction(women_rep, denominator = 100)
+  )
+  
+# View the data
+glimpse(female_emp)
 ```
 
 ## Step 3: Merge the data
@@ -33,15 +85,74 @@ format: html
 *Now add country codes using the `countrycode` package and merge the data using `left_join()`.* 
 
 ```{r}
+#| label: country_codes
 
+# Load countrycode
+library(countrycode)
+
+Democracy <- Democracy |>
+  mutate(iso3c = countrycode(
+    sourcevar = vdem_ctry_id,
+    origin = "vdem",
+    destination = "wb",
+  )) |>
+  relocate(iso3c, .after = vdem_ctry_id)
+
+# View the data
+glimpse(Democracy)
+```
+
+```{r}
+#| label: join
+
+# Load readr
+library(readr)
+
+# Perform left join using common iso3c variable and year
+female_rep <- left_join(Democracy, female_emp, by = c("iso3c", "year"))
+
+# View the data
+glimpse(female_rep)
 ```
 
 ## Step 4: Summarize your combined data set
 
 *Use `group_by()`, `summarize()` and `arrange()` to glean insights about your data. For example, how do regions compare on mean values of women's representation and how do these values relate to the values of other variables in your data set? Which countries stand out in terms of women's representation? Etc.* 
 
+```{r}
+summary_region <- female_rep |>
+  group_by(region)  |>
+  summarize(
+    electoral_system = mean(electoral_system, na.rm = TRUE),
+    gender_quota = mean(gender_quota, na.rm = TRUE),
+    educational_attainment = mean(educational_attainment, na.rm = TRUE), 
+    women_rep = mean(women_rep, na.rm = TRUE)
+  ) |> 
+  arrange(desc(women_rep))
+
+# View the data
+glimpse(summary_region)
+```
+
+```{r}
+# Group_by(), summarize(), and arrange() for the max of each variable by country.
+
+summary_country <- female_rep |>
+  group_by(country.y)  |>
+  summarize(
+    electoral_system = mean(electoral_system, na.rm = TRUE),
+    gender_quota = mean(gender_quota, na.rm = TRUE), 
+    educational_attainment = mean(educational_attainment, na.rm = TRUE), 
+    women_rep = mean(women_rep, na.rm = TRUE)
+  ) |> 
+  arrange(desc(women_rep))
+
+# View the data
+glimpse(summary_country)
+```
 
 ## Step 5: Interpret your data
 
 *Write a paragraph or so relating your insights to the Norris reading about electoral reform and women's representation. Picking a handful of country cases from your data, how does your analysis relate to her arguments about the relevance of electoral systems, statutory quotas, reserved seats or voluntary quotas?* 
 
+One of the findings that Norris makes in her paper is that the type of electoral system employed by a country is very important to increased representation in government. Additionally, Norris concludes that the system most likely to having female leaders elected is the proportional electoral system. Norris also suggests that an effective way to increase the proportion of women is utilize statutory quotas. With this information, I chose to look at these four variables: lower chamber gender quota, lower chamber electoral system, Proportion of seats held by women in national parliaments (%), and educational attainment, at least Bachelor's or equivalent, population 25+, female (%) (cumulative). I included the last variable as I suspected that a more educated female population is would likely also correlate to the other markers that indicate increased representation. Norris' findings are corroborated by the data I collected. The country with the highest proportion of women in parliament was Rwanda. It also has reserved seats for women and has a proportional electoral system. It is interesting that the country with the most elected female leaders has, not only the system best suited for electing female leaders, but that also has a gender quota ensures a certain number of seats go to women. Despite this, Rwanda has an educational attainment of 2.1 which is quite low. So, in this case, educational attainment is not a good indicator for women's representation. The country with the second highest proportion of women in parliament was Sweden. While Sweden has no gender quotas, it does have a proportional system and has a an educational attainment percent of 26.7 which it relatively high. Finland, which ranks fourth for representation has similar values to Sweden. Cuba, which ranks third has no gender quota and majoritarian system. This is against what is expected so there may be other factors that contribute the this. Aside from Cuba all of the top five countries with the greatest representation have proportional systems. It is also interesting to note that the countries with the lowest representation of women generally have majoritatian systems and no gender quotas. Overall, the data generally aligns with Norris' observations and conclusions in the paper.
